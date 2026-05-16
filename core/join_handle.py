@@ -16,6 +16,18 @@ class JoinHandle:
         self.db = db
         self._fail: dict[str, int] = {}
 
+    @staticmethod
+    def _get_notice_field(text: str, field_name: str) -> str | None:
+        prefix = f"{field_name}："
+        for line in text.splitlines():
+            if line.startswith(prefix):
+                return line[len(prefix) :].strip()
+        return None
+
+    async def _format_invitor(self, event: AiocqhttpMessageEvent, invitor_id: str) -> str:
+        nickname = await get_nickname(event, invitor_id)
+        return f"{nickname}({invitor_id})"
+
     async def _send_admin(self, client: CQHttp, message: str):
         for admin_id in self.cfg.admins_id:
             try:
@@ -266,6 +278,7 @@ class JoinHandle:
                 return
             comment = raw.get("comment")
             flag = raw.get("flag", "")
+            invitor_id = str(raw.get("invitor_id", "")).strip()
             info = await client.get_stranger_info(user_id=int(uid))
             nickname = info.get("nickname") or "未知昵称"
             if info.get("isHideQQLevel"):
@@ -299,9 +312,15 @@ class JoinHandle:
 
             # 生成并发送通知
             tip = "批准/驳回：" if not approve_msg else ""
-            notice = f"【进群申请】{tip}\n昵称：{nickname}\nQQ：{uid}\nflag：{flag}"
+            notice = f"【进群申请】{tip}\n昵称：{nickname}\nQQ：{uid}"
+
+            if invitor_id:
+                notice += f"\n邀请人：{await self._format_invitor(event, invitor_id)}"
             if level is not None:
                 notice += f"\n等级：{level}"
+
+            notice += f"\nflag：{flag}"
+
             if comment:
                 notice += f"\n{comment}"
             if approve_msg:
@@ -358,10 +377,11 @@ class JoinHandle:
         text = get_reply_message_str(event)
         if not text:
             return "未引用任何【进群申请】"
-        lines = text.split("\n")
-        if "【进群申请】" in text and len(lines) >= 4:
-            nickname = lines[1].split("：")[1]  # 第2行冒号后文本为nickname
-            flag = lines[3].split("：")[1]  # 第4行冒号后文本为flag
+        if "【进群申请】" in text:
+            nickname = self._get_notice_field(text, "昵称") or "该用户"
+            flag = self._get_notice_field(text, "flag")
+            if not flag:
+                return "未在引用消息中找到 flag，无法处理这条申请"
             try:
                 await event.bot.set_group_add_request(
                     flag=flag, sub_type="add", approve=approve, reason=extra

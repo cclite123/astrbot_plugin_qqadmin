@@ -24,22 +24,25 @@ class NoticeHandle:
         """(引用图片)发布群公告 xxx"""
         content = event.message_str.partition(" ")[2]
         if not content:
-            await event.send(event.plain_result("你又不说要发什么群公告"))
+            await event.send(event.plain_result("未指定群公告内容"))
             return
         gid = event.get_group_id()
-        image_path = None
+        image_path = ""
         if image_url := extract_image_url(chain=event.get_messages()):
             img_name = f"{gid}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             temp_path = self.cfg.group_notice_dir / img_name
 
-            logger.debug("temp_path:", temp_path)
+            logger.debug(f"Group notice image temp path: {temp_path}")
             image_path = await download_file(image_url, temp_path)
             if not image_path:
                 await event.send(event.plain_result("图片获取失败"))
                 return
-        await event.bot._send_group_notice(
-            group_id=int(event.get_group_id()), content=content, image=image_path
-        )
+
+            await event.bot._send_group_notice(
+                group_id=int(event.get_group_id()),
+                content=content,
+                image=str(image_path),
+            )
         event.stop_event()
 
     async def get_group_notice(self, event: AiocqhttpMessageEvent):

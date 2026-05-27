@@ -7,12 +7,14 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 )
 
 from ..config import PluginConfig
+from ..data import QQAdminDB
 from ..utils import BAN_ME_QUOTES, extract_image_url, get_ats, get_nickname
 
 
 class NormalHandle:
-    def __init__(self, config: PluginConfig):
+    def __init__(self, config: PluginConfig, db: QQAdminDB):
         self.cfg = config
+        self.db = db
 
     async def set_group_ban(
         self,
@@ -20,7 +22,10 @@ class NormalHandle:
         ban_time: int | None = None,
     ):
         """禁言 60 @user"""
-        ban_time = self.cfg.get_ban_time(ban_time)
+        group_config = self.db.get_group_snapshot(event.get_group_id())
+        ban_time = self.cfg.get_ban_time_with_range(
+            group_config.get("random_ban_time"), ban_time
+        )
 
         for tid in get_ats(event):
             try:
@@ -37,7 +42,10 @@ class NormalHandle:
         self, event: AiocqhttpMessageEvent, ban_time: int | None = None
     ):
         """禁我 60"""
-        ban_time = self.cfg.get_ban_time(ban_time)
+        group_config = self.db.get_group_snapshot(event.get_group_id())
+        ban_time = self.cfg.get_ban_time_with_range(
+            group_config.get("random_ban_time"), ban_time
+        )
         try:
             await event.bot.set_group_ban(
                 group_id=int(event.get_group_id()),

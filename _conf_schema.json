@@ -1,14 +1,7 @@
 {
-  "divided_manage": {
-    "description": "分群管理",
-    "type": "bool",
-    "obvious_hint": true,
-    "hint": "开启后，每个群拥有一份配置，面板上设定的默认值仅作为初始值，每个群可在群内用命令单独修改。若关闭，则重载插件时会将所有群的配置恢复成默认值",
-    "default": false
-  },
   "default": {
-    "description": "默认值配置",
-    "hint": "注意：以下配置项均为默认值，在每个群内调用过一次后会写入数据库，如果想恢复成默认值，请使用命令 “群管重置”，重置所有群请用命令 “群管重置 all”",
+    "description": "默认群配置",
+    "hint": "这些配置项会作为默认群模板使用。具体群开启“跟随默认配置”后，会直接继承这里的设置；关闭后则保存自己的独立配置。",
     "obvious_hint": true,
     "type": "object",
     "items": {

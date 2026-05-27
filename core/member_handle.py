@@ -41,7 +41,6 @@ class MemberHandle:
         url = await self.plugin.text_to_image(info_str)
         await event.send(event.image_result(url))
 
-
     async def clear_group_member(
         self,
         event: AiocqhttpMessageEvent,

@@ -15,6 +15,7 @@ from ..utils import download_file, extract_image_url
 if TYPE_CHECKING:
     from ..main import QQAdminPlugin
 
+
 class NoticeHandle:
     def __init__(self, plugin: QQAdminPlugin, config: PluginConfig):
         self.plugin = plugin

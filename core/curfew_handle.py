@@ -115,7 +115,6 @@ class GroupCurfew:
             async with self._lock:
                 self.whole_ban_status = True
 
-
     async def start_curfew_task(self):
         """注册 APScheduler 定时任务"""
         hour_s, minute_s = map(int, self._start_time_str.split(":"))
@@ -142,7 +141,6 @@ class GroupCurfew:
         if start_dt <= now < end_dt:
             logger.debug(f"当前时间群 {self.group_id} 在宵禁时间段，立即启用禁言")
             await self._enable_curfew()
-
 
     def stop_curfew_task(self):
         """移除 APScheduler 任务（同步即可）"""
@@ -288,7 +286,6 @@ class CurfewHandle:
         ]
         if tasks:
             await asyncio.gather(*tasks)
-
 
     @staticmethod
     def parse_time(time_str: str) -> tuple[str, int, int] | None:

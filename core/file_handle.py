@@ -29,7 +29,9 @@ class FileHandle:
         - "数字/数字" -> 用缓存解析 (folder序号/文件序号)
         """
         path = path.strip()
-        response = await event.bot.get_group_root_files(group_id=int(event.get_group_id()))
+        response = await event.bot.get_group_root_files(
+            group_id=int(event.get_group_id())
+        )
         _, mapping = self._get_folder_info(response, "")
 
         def resolve_index(
@@ -266,9 +268,7 @@ class FileHandle:
                 await event.bot.delete_group_folder(
                     group_id=group_id, folder_id=target_folder["folder_id"]
                 )
-                await event.send(
-                    event.plain_result(f"已删除群文件夹：▶{folder_name}")
-                )
+                await event.send(event.plain_result(f"已删除群文件夹：▶{folder_name}"))
             else:
                 await event.send(event.plain_result(f"群文件夹【{folder_name}】不存在"))
 
@@ -310,9 +310,7 @@ class FileHandle:
                     (f for f in response["files"] if folder_name == f["file_name"]),
                     None,
                 ):
-                    yield event.plain_result(
-                        self._format_file_info(file)
-                    )
+                    yield event.plain_result(self._format_file_info(file))
                 else:
                     yield event.plain_result(f"未能找到【{folder_name}】")
         elif not folder_name and file_name:
@@ -322,9 +320,7 @@ class FileHandle:
                 (f for f in response["files"] if file_name == f["file_name"]),
                 None,
             ):
-                yield event.plain_result(
-                    self._format_file_info(file)
-                )
+                yield event.plain_result(self._format_file_info(file))
 
             else:
                 yield event.plain_result(f"未能找到群文件：📄{file_name}")

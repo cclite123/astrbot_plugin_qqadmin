@@ -101,7 +101,6 @@ class EnhanceHandle:
                     logger.error(f"bot在群{group_id}权限不足，禁言失败")
                 timestamps.clear()
 
-
     async def start_vote_mute(self, event, ban_time: int | None = None):
         """
         发起投票禁言：如果已有对该用户的投票，直接提示
@@ -111,7 +110,9 @@ class EnhanceHandle:
             return
         target_id = target_ids[0]
         if not ban_time or not isinstance(ban_time, int):
-            ban_time = random.randint(*map(int, self.conf["random_ban_time"].split("~")))
+            ban_time = random.randint(
+                *map(int, self.conf["random_ban_time"].split("~"))
+            )
         group_id = event.get_group_id()
 
         if group_id in self.vote_cache:
@@ -153,7 +154,9 @@ class EnhanceHandle:
                         user_id=int(record["target"]),
                         duration=record["ban_time"],
                     )
-                    await event.send(event.plain_result(f"投票时间到！已禁言{nickname2}"))
+                    await event.send(
+                        event.plain_result(f"投票时间到！已禁言{nickname2}")
+                    )
                 except Exception:
                     logger.error(f"bot在群{group_id}权限不足，禁言失败")
             else:
@@ -164,7 +167,6 @@ class EnhanceHandle:
             del self.vote_cache[group_id]
 
         asyncio.create_task(settle_vote())
-
 
     async def vote_mute(self, event: AiocqhttpMessageEvent, agree: bool):
         """
@@ -218,5 +220,3 @@ class EnhanceHandle:
                 f"禁言【{nickname}】：\n赞同({agree_count}/{threshold})\n反对({disagree_count}/{threshold})"
             )
         )
-
-

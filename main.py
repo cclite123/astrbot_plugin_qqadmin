@@ -23,12 +23,14 @@ from .core import (
     NoticeHandle,
 )
 from .data import QQAdminDB
+from .group_info_cache import QQGroupInfoCache
 from .permission import (
     PermLevel,
     perm_manager,
     perm_required,
 )
-from .utils import ADMIN_HELP, print_logo
+from .utils import print_logo
+from .web import QQAdminWebController
 
 
 class QQAdminPlugin(Star):
@@ -37,24 +39,25 @@ class QQAdminPlugin(Star):
         self.context = context
         self.cfg = PluginConfig(config, context)
         self.db = QQAdminDB(self.cfg)
-        self.normal = NormalHandle(self.cfg)
+        self.db.default_cfg = self.cfg.build_group_default_config()
+        self.group_cache = QQGroupInfoCache(context, self.db)
+        self.normal = NormalHandle(self.cfg, self.db)
         self.notice = NoticeHandle(self, self.cfg)
         self.banpro = BanproHandle(self.cfg, self.db)
         self.join = JoinHandle(self.cfg, self.db)
         self.member = MemberHandle(self)
         self.file = FileHandle(self.cfg)
         self.curfew = CurfewHandle(self.context, self.cfg)
-        self.llm = LLMHandle(self.context, self.cfg)
+        self.llm = LLMHandle(self.context, self.cfg, self.db)
+        self.web = QQAdminWebController(context, self.cfg, self.db, self.group_cache)
+        self.web.register_routes()
 
     async def initialize(self):
         await self.db.init()
 
-        if not self.cfg.divided_manage:
-            await self.db.reset_to_default()
-
         asyncio.create_task(self.curfew.initialize())
 
-        perm_manager.lazy_init(self.cfg)
+        perm_manager.lazy_init(self.cfg, self.db)
 
         if random.random() < 0.01:
             print_logo()
@@ -312,12 +315,12 @@ class QQAdminPlugin(Star):
         await self.join.handle_block_ids(event)
 
     @filter.command("批准", alias={"同意进群"}, desc="批准进群申请")
-    @perm_required(PermLevel.ADMIN, perm_key="approve", allow_private=True)
+    @perm_required(PermLevel.ADMIN, perm_key="approve")
     async def agree_add_group(self, event: AiocqhttpMessageEvent, extra: str = ""):
         await self.join.agree_add_group(event, extra)
 
     @filter.command("驳回", alias={"拒绝进群", "不批准"}, desc="驳回进群申请")
-    @perm_required(PermLevel.ADMIN, perm_key="approve", allow_private=True)
+    @perm_required(PermLevel.ADMIN, perm_key="approve")
     async def refuse_add_group(self, event: AiocqhttpMessageEvent, extra: str = ""):
         await self.join.refuse_add_group(event, extra)
 
@@ -479,12 +482,6 @@ class QQAdminPlugin(Star):
         else:
             await self.db.reset_to_default(str(gid))
             yield event.plain_result("已重置本群的群管配置")
-
-    @filter.command("群管帮助")
-    async def qq_admin_help(self, event: AiocqhttpMessageEvent):
-        """查看群管帮助"""
-        url = await self.text_to_image(ADMIN_HELP)
-        yield event.image_result(url)
 
     async def terminate(self):
         """可选择实现异步的插件销毁方法，当插件被卸载/停用时会调用。"""

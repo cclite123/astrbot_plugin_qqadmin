@@ -9,13 +9,15 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 )
 
 from ..config import PluginConfig
+from ..data import QQAdminDB
 from ..utils import get_ats, get_nickname
 
 
 class LLMHandle:
-    def __init__(self, context: Context, config: PluginConfig):
+    def __init__(self, context: Context, config: PluginConfig, db: QQAdminDB):
         self.context = context
         self.cfg = config
+        self.db = db
 
     def _build_user_context(
         self, round_messages: list[dict[str, Any]], target_id: str
@@ -105,7 +107,11 @@ class LLMHandle:
         at_ids = get_ats(event)
         target_id = at_ids[0] if at_ids else event.get_sender_id()
         end_arg = event.message_str.split()[-1]
-        query_rounds = int(end_arg) if end_arg.isdigit() else self.cfg.llm_get_msg_count
+        group_config = self.db.get_group_snapshot(event.get_group_id())
+        default_rounds = int(
+            group_config.get("llm_get_msg_count", self.cfg.llm_get_msg_count)
+        )
+        query_rounds = int(end_arg) if end_arg.isdigit() else default_rounds
         raw_card = await get_nickname(event, target_id)
         return target_id, raw_card, query_rounds
 

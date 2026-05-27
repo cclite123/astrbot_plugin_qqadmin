@@ -1,9 +1,9 @@
 # config.py
 from __future__ import annotations
 
-from pathlib import Path
-from collections.abc import Mapping, MutableMapping
 import random
+from collections.abc import Mapping, MutableMapping
+from pathlib import Path
 from types import MappingProxyType, UnionType
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
@@ -114,7 +114,6 @@ class VoteBanConfig(ConfigNode):
 
 
 class PluginConfig(ConfigNode):
-    divided_manage: bool
     default: dict
     admin_audit: bool
     random_ban_time: str
@@ -144,12 +143,9 @@ class PluginConfig(ConfigNode):
         self.file_dir = self.data_dir / "file"
         self.file_dir.mkdir(parents=True, exist_ok=True)
 
-        # 随机禁言时间范围(最大值不超过一个月, 即2592000秒)
-        min_ban_time, max_ban_time = map(int, self.random_ban_time.split("~"))
-        self.min_ban_time = max(min_ban_time, 1)
-        self.max_ban_time = min(max_ban_time, 2592000)
         self.spamming_count = 5
         self.spamming_interval = 0.5
+        self.refresh_runtime_settings()
 
     @staticmethod
     def _clean_ids(ids: list) -> list[str]:
@@ -162,3 +158,56 @@ class PluginConfig(ConfigNode):
             return random.randint(self.min_ban_time, self.max_ban_time)
         else:
             return min(max(seconds, self.min_ban_time), self.max_ban_time)
+
+    @staticmethod
+    def _resolve_ban_time_range(random_ban_time: str) -> tuple[int, int]:
+        try:
+            min_ban_time, max_ban_time = map(int, str(random_ban_time).split("~", 1))
+        except ValueError:
+            min_ban_time, max_ban_time = 30, 300
+
+        min_ban_time = max(min_ban_time, 1)
+        max_ban_time = min(max(max_ban_time, min_ban_time), 2592000)
+        return min_ban_time, max_ban_time
+
+    def get_ban_time_with_range(
+        self, random_ban_time: str | None, seconds: int | None = None
+    ) -> int:
+        if not random_ban_time:
+            return self.get_ban_time(seconds)
+
+        min_ban_time, max_ban_time = self._resolve_ban_time_range(random_ban_time)
+        if not seconds or not isinstance(seconds, int):
+            return random.randint(min_ban_time, max_ban_time)
+        return min(max(seconds, min_ban_time), max_ban_time)
+
+    def build_group_default_config(self) -> dict[str, Any]:
+        return {
+            **self.default,
+            "admin_audit": self.admin_audit,
+            "random_ban_time": self.random_ban_time,
+            "vote_ban": {
+                "ttl": self.vote_ban.ttl,
+                "threshold": self.vote_ban.threshold,
+            },
+            "llm_get_msg_count": self.llm_get_msg_count,
+            "level_threshold": self.level_threshold,
+            "perms": dict(self.perms),
+        }
+
+    def refresh_runtime_settings(self) -> None:
+        """刷新依赖配置的运行时缓存。"""
+        try:
+            min_ban_time, max_ban_time = self._resolve_ban_time_range(
+                str(self.random_ban_time)
+            )
+        except ValueError:
+            logger.warning(
+                f"[config:{self.__class__.__name__}] random_ban_time 格式错误: "
+                f"{self.random_ban_time}，已回退到 30~300"
+            )
+            min_ban_time, max_ban_time = 30, 300
+            self.random_ban_time = "30~300"
+
+        self.min_ban_time = max(min_ban_time, 1)
+        self.max_ban_time = min(max(max_ban_time, self.min_ban_time), 2592000)

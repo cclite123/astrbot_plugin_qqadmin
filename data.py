@@ -1,12 +1,14 @@
 import asyncio
+import copy
 import json
 
 import aiosqlite
 
 from astrbot.api import logger
 
-from .utils import parse_bool
 from .config import PluginConfig
+from .utils import parse_bool
+
 
 class QQAdminDB:
     """
@@ -34,6 +36,7 @@ class QQAdminDB:
     }
 
     REVERSE_FIELD_MAP = {v: k for k, v in FIELD_MAP.items()}
+    FOLLOW_DEFAULT_MARKER = "__follow_default__"
 
     # ================================================================
 
@@ -92,21 +95,81 @@ class QQAdminDB:
         )
         await self._conn.commit()
 
+    def _strip_meta_fields(self, data: dict | None) -> dict | None:
+        if data is None:
+            return None
+        return {
+            key: copy.deepcopy(value)
+            for key, value in data.items()
+            if key != self.FOLLOW_DEFAULT_MARKER
+        }
+
+    def _is_follow_default_data(self, data: dict | None) -> bool:
+        if data is None:
+            return True
+
+        marker = data.get(self.FOLLOW_DEFAULT_MARKER)
+        if marker is False:
+            return False
+
+        clean = self._strip_meta_fields(data) or {}
+        if not clean:
+            return True
+
+        for key, value in clean.items():
+            if key not in self.default_cfg:
+                return False
+            if value != self.default_cfg[key]:
+                return False
+        return True
+
+    def is_group_follow_default(self, gid: str) -> bool:
+        return self._is_follow_default_data(self._cache.get(gid))
+
+    def _build_explicit_group_record(self, data: dict | None = None) -> dict:
+        base = copy.deepcopy(data if data is not None else self.default_cfg)
+        base[self.FOLLOW_DEFAULT_MARKER] = False
+        return base
+
     # ============================== 基础：确保配置存在 ==============================
 
     async def ensure_group(self, gid: str):
         """确保存在群配置，若没有则按 default_cfg 初始化"""
-        if gid not in self._cache:
-            self._cache[gid] = json.loads(json.dumps(self.default_cfg))
+        if gid not in self._cache or self._is_follow_default_data(self._cache.get(gid)):
+            self._cache[gid] = self._build_explicit_group_record(
+                self.get_group_snapshot(gid)
+            )
             await self._save_to_db(gid, self._cache[gid])
 
-    # ============================== 🔥 极简 API ==============================
+    def list_group_ids(self) -> list[str]:
+        return sorted(
+            self._cache.keys(),
+            key=lambda gid: (
+                not str(gid).isdigit(),
+                int(gid) if str(gid).isdigit() else str(gid),
+            ),
+        )
+
+    def get_group_snapshot(self, gid: str) -> dict:
+        raw = self._cache.get(gid)
+        if self._is_follow_default_data(raw):
+            data = copy.deepcopy(self.default_cfg)
+        else:
+            data = self._strip_meta_fields(raw) or {}
+        for key, value in self.default_cfg.items():
+            if key not in data:
+                data[key] = copy.deepcopy(value)
+        return data
+
+    # ============================== API ==============================
 
     async def all(self, gid: str) -> dict:
         """
         获取整个配置，并自动补齐 default_cfg 的字段
         """
-        await self.ensure_group(gid)
+        if self.is_group_follow_default(gid):
+            return self.get_group_snapshot(gid)
+
         data = self._cache[gid]
 
         changed = False
@@ -115,16 +178,25 @@ class QQAdminDB:
                 data[k] = json.loads(json.dumps(v))
                 changed = True
 
+        if data.get(self.FOLLOW_DEFAULT_MARKER) is not False:
+            data[self.FOLLOW_DEFAULT_MARKER] = False
+            changed = True
+
         if changed:
             await self._save_to_db(gid, data)
 
-        return data
+        return self.get_group_snapshot(gid)
 
     async def get(self, gid: str, field: str, default=None):
         """
         读字段，不存在则补齐 default
         """
-        await self.ensure_group(gid)
+        if self.is_group_follow_default(gid):
+            snapshot = self.get_group_snapshot(gid)
+            if field in snapshot:
+                return snapshot[field]
+            return json.loads(json.dumps(default))
+
         data = self._cache[gid]
 
         if field not in data:
@@ -139,6 +211,10 @@ class QQAdminDB:
         """
         await self.ensure_group(gid)
         self._cache[gid][field] = value
+        await self._save_to_db(gid, self._cache[gid])
+
+    async def replace_group(self, gid: str, data: dict):
+        self._cache[gid] = self._build_explicit_group_record(data)
         await self._save_to_db(gid, self._cache[gid])
 
     async def add(self, gid: str, field: str, value):
@@ -173,7 +249,6 @@ class QQAdminDB:
             await self._conn.close()
             self._conn = None
             self._initialized = False
-
 
     # ====================== 中文展示、读回 ======================
 
@@ -257,14 +332,28 @@ class QQAdminDB:
             data[eng_key] = value
 
         await self._save_to_db(gid, data)
-        return data
+        return self.get_group_snapshot(gid)
 
+    async def follow_default(self, gid: str | None = None):
+        """让指定群（或全部群）重新跟随默认群配置"""
+        if gid is None:
+            if self._conn:
+                await self._conn.execute("DELETE FROM groups")
+                await self._conn.commit()
+            self._cache.clear()
+            logger.info("所有群聊的群管配置已重新跟随默认值")
+            return
+
+        normalized_gid = str(gid)
+        if self._conn:
+            await self._conn.execute(
+                "DELETE FROM groups WHERE group_id = ?",
+                (normalized_gid,),
+            )
+            await self._conn.commit()
+        self._cache.pop(normalized_gid, None)
+        logger.info(f"群聊{normalized_gid}的群管配置已重新跟随默认值")
 
     async def reset_to_default(self, gid: str | None = None):
         """把指定群（或全部群）配置恢复成 default_cfg"""
-        targets = [gid] if gid else list(self._cache.keys())
-        for g in targets:
-            self._cache[g] = json.loads(json.dumps(self.default_cfg))
-            await self._save_to_db(g, self._cache[g])
-
-        logger.info(f"群聊{gid}的群管配置已重置为默认值")
+        await self.follow_default(gid)

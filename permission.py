@@ -10,6 +10,7 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
 )
 
 from .config import PluginConfig
+from .data import QQAdminDB
 from .utils import get_ats
 
 
@@ -54,14 +55,19 @@ class PermissionManager:
 
     def __init__(self):
         self.cfg: PluginConfig | None = None
-        self.perms: dict[str, PermLevel] | None = None
+        self.db: QQAdminDB | None = None
 
-
-    def lazy_init(self, config: PluginConfig):
+    def lazy_init(self, config: PluginConfig, db: QQAdminDB):
         if self._initialized:
             raise RuntimeError("PermissionManager already initialized")
         self.cfg = config
-        self.perms = {k: PermLevel.from_str(v) for k, v in self.cfg.perms.items()}
+        self.db = db
+        self._initialized = True
+
+    def refresh(self, config: PluginConfig, db: QQAdminDB | None = None):
+        self.cfg = config
+        if db is not None:
+            self.db = db
         self._initialized = True
 
     async def get_perm_level(
@@ -80,17 +86,19 @@ class PermissionManager:
             return PermLevel.UNKNOWN
         role = info.get("role", "unknown")
         level = int(info.get("level", 0))
+        group_config = (
+            self.db.get_group_snapshot(group_id)
+            if self.db is not None
+            else {"level_threshold": self.cfg.level_threshold if self.cfg else 50}
+        )
+        level_threshold = int(group_config.get("level_threshold", 50))
         match role:
             case "owner":
                 return PermLevel.OWNER
             case "admin":
                 return PermLevel.ADMIN
             case "member":
-                return (
-                    PermLevel.HIGH
-                    if self.cfg and level >= self.cfg.level_threshold
-                    else PermLevel.MEMBER
-                )
+                return PermLevel.HIGH if level >= level_threshold else PermLevel.MEMBER
             case _:
                 return PermLevel.UNKNOWN
 
@@ -104,7 +112,13 @@ class PermissionManager:
         user_level = await self.get_perm_level(event, user_id=event.get_sender_id())
 
         # 未指定权限，则默认至少需要管理员权限
-        required_level = (self.perms or {}).get(perm_key, PermLevel.ADMIN)
+        group_config = (
+            self.db.get_group_snapshot(event.get_group_id())
+            if self.db is not None
+            else {"perms": self.cfg.perms if self.cfg else {}}
+        )
+        perms = group_config.get("perms", {})
+        required_level = PermLevel.from_str(str(perms.get(perm_key, "管理员")))
 
         if user_level > required_level:
             return f"你没{required_level}权限"
@@ -129,14 +143,12 @@ def perm_required(
     bot_perm: PermLevel = PermLevel.ADMIN,
     perm_key: str | None = None,
     check_at: bool = True,
-    allow_private: bool = False,
 ):
     """
     权限检查装饰器。
     :param perm_key: 可选。用户执行命令所需的最低权限键名，默认使用被装饰函数的函数名。
     :param bot_perm: Bot 执行此命令所需的最低权限等级。
     :param check_at: 是否检查“是否有权对被@者实施操作”。
-    :param allow_private: 是否允许在私信中执行。
     """
 
     def decorator(
@@ -156,17 +168,8 @@ def perm_required(
             if event.platform_meta.name != "aiocqhttp":
                 return
 
-            # 私信处理
+            # 仅限群聊
             if event.is_private_chat():
-                if not allow_private:
-                    return
-                if inspect.isasyncgenfunction(func):
-                    async for item in func(plugin_instance, event, *args, **kwargs):
-                        yield item
-                else:
-                    await cast(
-                        Awaitable[Any], func(plugin_instance, event, *args, **kwargs)
-                    )
                 return
 
             # 权限管理未初始化

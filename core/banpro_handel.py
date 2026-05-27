@@ -218,15 +218,19 @@ class BanproHandle:
         if not target_ids:
             return
         target_id = target_ids[0]
-        ban_time = self.cfg.get_ban_time(ban_time)
         group_id = event.get_group_id()
+        group_config = self.db.get_group_snapshot(group_id)
+        ban_time = self.cfg.get_ban_time_with_range(
+            group_config.get("random_ban_time"), ban_time
+        )
 
         if group_id in self.vote_cache:
             await event.send(event.plain_result("群内已有正在进行的禁言投票"))
             return
 
-        ttl = self.cfg.vote_ban.ttl
-        threshold = self.cfg.vote_ban.threshold
+        vote_ban = group_config.get("vote_ban", {})
+        ttl = int(vote_ban.get("ttl", self.cfg.vote_ban.ttl))
+        threshold = int(vote_ban.get("threshold", self.cfg.vote_ban.threshold))
 
         expire_at = time.time() + ttl
         self.vote_cache[group_id] = {

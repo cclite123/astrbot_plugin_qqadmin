@@ -291,6 +291,48 @@ img {
     white-space: nowrap;
 }
 
+.group-role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--muted);
+}
+
+.group-role-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    color: white;
+}
+
+.group-role-icon.owner {
+    background: #d1a13a;
+    color: #fff8e2;
+}
+
+.group-role-icon.admin {
+    background: #2a9dbe;
+    color: #eefcff;
+}
+
+[data-theme="dark"] .group-role-icon.owner {
+    background: #b89137;
+    color: #fff6db;
+}
+
+[data-theme="dark"] .group-role-icon.admin {
+    background: #368dab;
+    color: #ebfbff;
+}
+
 .group-card-subline {
     display: flex;
     gap: 8px;

@@ -53,6 +53,7 @@ class QQAdminPageService:
             "avatar": "",
             "member_count": 0,
             "max_member_count": 0,
+            "bot_role": "unknown",
             "is_default_group": True,
             "config": {
                 FOLLOW_DEFAULT_KEY: False,
@@ -62,6 +63,20 @@ class QQAdminPageService:
 
     async def list_groups(self, force: bool = False) -> list[dict[str, Any]]:
         groups = await self.group_cache.list_groups(force=force)
+        return await self._build_group_entries(groups)
+
+    async def list_groups_with_bot_roles(
+        self, force: bool = False
+    ) -> list[dict[str, Any]]:
+        groups = await self.group_cache.list_groups_with_bot_roles(
+            force_bot_roles=force
+        )
+        return await self._build_group_entries(groups)
+
+    async def _build_group_entries(
+        self,
+        groups: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = [self.get_default_group_entry()]
         stale_group_ids: list[str] = []
 

@@ -1,3 +1,24 @@
+function buildGroupRoleBadge(group) {
+  const role = String(group?.bot_role || "").toLowerCase();
+  if (role !== "owner" && role !== "admin") {
+    return null;
+  }
+
+  const badge = document.createElement("span");
+  badge.className = `group-role-badge ${role}`;
+
+  const icon = document.createElement("span");
+  icon.className = `group-role-icon ${role}`;
+  icon.textContent = role === "owner" ? "主" : "管";
+  badge.appendChild(icon);
+
+  const text = document.createElement("span");
+  text.textContent = role === "owner" ? "群主" : "管理员";
+  badge.appendChild(text);
+
+  return badge;
+}
+
 export function renderGroupCards({
   root,
   groups,
@@ -40,6 +61,11 @@ export function renderGroupCards({
     name.className = "group-card-name";
     name.textContent = group.group_name || `群 ${group.group_id}`;
     title.appendChild(name);
+
+    const roleBadge = buildGroupRoleBadge(group);
+    if (roleBadge) {
+      title.appendChild(roleBadge);
+    }
 
     main.appendChild(title);
 

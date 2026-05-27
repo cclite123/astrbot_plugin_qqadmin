@@ -13,6 +13,13 @@ from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_platform_adapter import (
 
 from .data import QQAdminDB
 
+BOT_ROLE_PRIORITY = {
+    "owner": 0,
+    "admin": 1,
+    "member": 2,
+    "unknown": 2,
+}
+
 
 class QQGroupInfoCache:
     def __init__(
@@ -26,14 +33,26 @@ class QQGroupInfoCache:
         self.ttl_seconds = ttl_seconds
 
         self._lock = asyncio.Lock()
+        self._bot_role_lock = asyncio.Lock()
         self._last_refresh_at = 0.0
         self._group_list_cache: list[dict[str, Any]] = []
         self._group_detail_cache: dict[str, dict[str, Any]] = {}
         self._group_clients: dict[str, Any] = {}
+        self._bot_role_cache: dict[str, str] = {}
+        self._client_bot_ids: dict[int, str] = {}
 
     async def list_groups(self, force: bool = False) -> list[dict[str, Any]]:
         if force or not self._is_fresh() or not self._group_list_cache:
             await self._refresh_group_list(force=force)
+        return copy.deepcopy(self._group_list_cache)
+
+    async def list_groups_with_bot_roles(
+        self,
+        force_bot_roles: bool = False,
+    ) -> list[dict[str, Any]]:
+        if not self._is_fresh() or not self._group_list_cache:
+            await self._refresh_group_list(force=False)
+        await self._hydrate_bot_roles(force=force_bot_roles)
         return copy.deepcopy(self._group_list_cache)
 
     async def get_group(self, group_id: str, force: bool = False) -> dict[str, Any]:
@@ -74,6 +93,7 @@ class QQGroupInfoCache:
         ]
         self._group_detail_cache.pop(normalized_group_id, None)
         self._group_clients.pop(normalized_group_id, None)
+        self._bot_role_cache.pop(normalized_group_id, None)
 
     def _is_fresh(self) -> bool:
         return (time.time() - self._last_refresh_at) < self.ttl_seconds
@@ -111,7 +131,9 @@ class QQGroupInfoCache:
                     merged_groups, group_clients, missing_detail_group_ids
                 )
 
-            self._group_list_cache = self._sort_groups(list(merged_groups.values()))
+            groups = list(merged_groups.values())
+            self._attach_cached_bot_roles(groups)
+            self._group_list_cache = self._sort_groups(groups)
             self._group_clients = group_clients
             self._group_detail_cache.clear()
             self._last_refresh_at = time.time()
@@ -152,21 +174,7 @@ class QQGroupInfoCache:
         group_id: str,
         preferred_client: Any | None = None,
     ) -> tuple[dict[str, Any] | None, Any | None]:
-        tried_client_ids: set[int] = set()
-        clients: list[Any] = []
-
-        if preferred_client is not None:
-            clients.append(preferred_client)
-            tried_client_ids.add(id(preferred_client))
-
-        for client in self._iter_clients():
-            client_id = id(client)
-            if client_id in tried_client_ids:
-                continue
-            tried_client_ids.add(client_id)
-            clients.append(client)
-
-        for client in clients:
+        for client in self._build_client_priority_list(preferred_client):
             try:
                 result = await client.call_action(
                     "get_group_info", group_id=int(group_id)
@@ -182,6 +190,110 @@ class QQGroupInfoCache:
                 )
 
         return None, None
+
+    async def _hydrate_bot_roles(self, force: bool = False) -> None:
+        async with self._bot_role_lock:
+            groups = [
+                group
+                for group in self._group_list_cache
+                if str(group.get("group_id", "")).strip()
+            ]
+            if not groups:
+                return
+
+            semaphore = asyncio.Semaphore(8)
+
+            async def load_role(group: dict[str, Any]) -> None:
+                group_id = str(group.get("group_id", "")).strip()
+                if not group_id:
+                    return
+                if not force and group_id in self._bot_role_cache:
+                    return
+
+                async with semaphore:
+                    role, client = await self._fetch_bot_role(
+                        group_id,
+                        preferred_client=self._group_clients.get(group_id),
+                    )
+                    self._bot_role_cache[group_id] = role
+                    if client is not None:
+                        self._group_clients[group_id] = client
+
+            await asyncio.gather(*(load_role(group) for group in groups))
+            self._attach_cached_bot_roles(self._group_list_cache)
+            self._group_list_cache = self._sort_groups(self._group_list_cache)
+
+    async def _fetch_bot_role(
+        self,
+        group_id: str,
+        preferred_client: Any | None = None,
+    ) -> tuple[str, Any | None]:
+        for client in self._build_client_priority_list(preferred_client):
+            bot_id = await self._get_client_bot_id(client)
+            if not bot_id or not bot_id.isdigit():
+                continue
+
+            try:
+                result = await client.call_action(
+                    "get_group_member_info",
+                    group_id=int(group_id),
+                    user_id=int(bot_id),
+                    no_cache=True,
+                )
+                info = self._extract_object(result)
+                if not info:
+                    continue
+                return self._normalize_bot_role(info.get("role")), client
+            except Exception as exc:
+                logger.debug("Failed to fetch bot role for %s: %s", group_id, exc)
+
+        return "unknown", None
+
+    async def _get_client_bot_id(self, client: Any) -> str:
+        client_key = id(client)
+        cached_bot_id = self._client_bot_ids.get(client_key)
+        if cached_bot_id:
+            return cached_bot_id
+
+        bot_id = ""
+        try:
+            result = await client.call_action("get_login_info")
+            info = self._extract_object(result)
+            bot_id = str(info.get("user_id", "")).strip()
+        except Exception:
+            try:
+                info = await client.get_login_info() or {}
+                bot_id = str(info.get("user_id", "")).strip()
+            except Exception as exc:
+                logger.debug("Failed to fetch bot self id: %s", exc)
+
+        if bot_id:
+            self._client_bot_ids[client_key] = bot_id
+        return bot_id
+
+    def _build_client_priority_list(
+        self, preferred_client: Any | None = None
+    ) -> list[Any]:
+        tried_client_ids: set[int] = set()
+        clients: list[Any] = []
+
+        if preferred_client is not None:
+            clients.append(preferred_client)
+            tried_client_ids.add(id(preferred_client))
+
+        for client in self._iter_clients():
+            client_id = id(client)
+            if client_id in tried_client_ids:
+                continue
+            tried_client_ids.add(client_id)
+            clients.append(client)
+
+        return clients
+
+    def _attach_cached_bot_roles(self, groups: list[dict[str, Any]]) -> None:
+        for group in groups:
+            group_id = str(group.get("group_id", "")).strip()
+            group["bot_role"] = self._bot_role_cache.get(group_id, "unknown")
 
     def _iter_clients(self) -> list[Any]:
         clients: list[Any] = []
@@ -261,10 +373,18 @@ class QQGroupInfoCache:
             return default
 
     @staticmethod
+    def _normalize_bot_role(value: Any) -> str:
+        role = str(value or "").strip().lower()
+        if role in {"owner", "admin", "member"}:
+            return role
+        return "unknown"
+
+    @staticmethod
     def _sort_groups(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(
             groups,
             key=lambda item: (
+                BOT_ROLE_PRIORITY.get(str(item.get("bot_role", "unknown")), 2),
                 not str(item.get("group_id", "")).isdigit(),
                 int(item["group_id"]) if str(item.get("group_id", "")).isdigit() else 0,
                 item.get("group_name", ""),

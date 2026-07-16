@@ -106,7 +106,6 @@ def format_time(timestamp):
 
 async def download_file(url: str, save_path: Path) -> Path | None:
     """下载文件并保存到本地"""
-    url = url.replace("https://", "http://")
     try:
         async with ClientSession() as client:
             response = await client.get(url)

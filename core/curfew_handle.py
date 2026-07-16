@@ -255,7 +255,10 @@ class CurfewHandle:
 
         # client 在 ws 连接成功时获取
         if not bot_id:
-            bot_id_future = asyncio.get_event_loop().create_future()
+            if client is None:
+                logger.warning(f"{inst.metadata.id} 无可用 client，跳过宵禁初始化")
+                return
+            bot_id_future = asyncio.get_running_loop().create_future()
 
             @client.on_websocket_connection
             async def on_ws_connect(event_: Event):

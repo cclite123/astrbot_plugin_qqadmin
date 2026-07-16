@@ -54,7 +54,9 @@ class LLMHandle:
             result: dict = await event.bot.api.call_action(
                 "get_group_msg_history", **payloads
             )
-            round_messages = result["messages"]
+            round_messages = result.get("messages", [])
+            if not round_messages:
+                break
             message_seq = round_messages[0]["message_id"]
 
             all_lines.extend(self._build_user_context(round_messages, target_id))

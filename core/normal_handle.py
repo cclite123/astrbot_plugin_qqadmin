@@ -34,7 +34,7 @@ class NormalHandle:
                     user_id=int(tid),
                     duration=ban_time,
                 )
-            except:  # noqa: E722
+            except Exception:
                 pass
         event.stop_event()
 
@@ -60,24 +60,33 @@ class NormalHandle:
     async def cancel_group_ban(self, event: AiocqhttpMessageEvent):
         """解禁@user"""
         for tid in get_ats(event):
-            await event.bot.set_group_ban(
-                group_id=int(event.get_group_id()), user_id=int(tid), duration=0
-            )
+            try:
+                await event.bot.set_group_ban(
+                    group_id=int(event.get_group_id()), user_id=int(tid), duration=0
+                )
+            except Exception:
+                pass
         event.stop_event()
 
     async def set_group_whole_ban(self, event: AiocqhttpMessageEvent):
         """全员禁言"""
-        await event.bot.set_group_whole_ban(
-            group_id=int(event.get_group_id()), enable=True
-        )
-        await event.send(event.plain_result("已开启全体禁言"))
+        try:
+            await event.bot.set_group_whole_ban(
+                group_id=int(event.get_group_id()), enable=True
+            )
+            await event.send(event.plain_result("已开启全体禁言"))
+        except Exception:
+            await event.send(event.plain_result("操作失败，可能权限不足"))
 
     async def cancel_group_whole_ban(self, event: AiocqhttpMessageEvent):
         """关闭全员禁言"""
-        await event.bot.set_group_whole_ban(
-            group_id=int(event.get_group_id()), enable=False
-        )
-        await event.send(event.plain_result("已关闭全员禁言"))
+        try:
+            await event.bot.set_group_whole_ban(
+                group_id=int(event.get_group_id()), enable=False
+            )
+            await event.send(event.plain_result("已关闭全体禁言"))
+        except Exception:
+            await event.send(event.plain_result("操作失败，可能权限不足"))
 
     async def set_group_card(
         self, event: AiocqhttpMessageEvent, target_card: str | int | None = None
@@ -155,43 +164,57 @@ class NormalHandle:
         """踢了@user"""
         for tid in get_ats(event):
             target_name = await get_nickname(event, user_id=tid)
-            await event.bot.set_group_kick(
-                group_id=int(event.get_group_id()),
-                user_id=int(tid),
-                reject_add_request=False,
-            )
-            await event.send(event.plain_result(f"已将【{tid}-{target_name}】踢出本群"))
+            try:
+                await event.bot.set_group_kick(
+                    group_id=int(event.get_group_id()),
+                    user_id=int(tid),
+                    reject_add_request=False,
+                )
+                await event.send(event.plain_result(f"已将【{tid}-{target_name}】踢出本群"))
+            except Exception:
+                await event.send(event.plain_result(f"无法踢出【{tid}-{target_name}】，可能权限不足"))
 
     async def set_group_block(self, event: AiocqhttpMessageEvent):
         """拉黑 @user"""
         for tid in get_ats(event):
             target_name = await get_nickname(event, user_id=tid)
-            await event.bot.set_group_kick(
-                group_id=int(event.get_group_id()),
-                user_id=int(tid),
-                reject_add_request=True,
-            )
-            await event.send(
-                event.plain_result(f"已将【{tid}-{target_name}】踢出本群并拉黑!")
-            )
+            try:
+                await event.bot.set_group_kick(
+                    group_id=int(event.get_group_id()),
+                    user_id=int(tid),
+                    reject_add_request=True,
+                )
+                await event.send(
+                    event.plain_result(f"已将【{tid}-{target_name}】踢出本群并拉黑!")
+                )
+            except Exception:
+                await event.send(
+                    event.plain_result(f"无法拉黑【{tid}-{target_name}】，可能权限不足")
+                )
 
     async def set_group_admin(self, event: AiocqhttpMessageEvent):
         """设置管理员@user"""
         for tid in get_ats(event):
-            await event.bot.set_group_admin(
-                group_id=int(event.get_group_id()), user_id=int(tid), enable=True
-            )
-            chain = [At(qq=tid), Plain(text="你已被设为管理员")]
-            await event.send(event.chain_result(chain))
+            try:
+                await event.bot.set_group_admin(
+                    group_id=int(event.get_group_id()), user_id=int(tid), enable=True
+                )
+                chain = [At(qq=tid), Plain(text="你已被设为管理员")]
+                await event.send(event.chain_result(chain))
+            except Exception:
+                await event.send(event.plain_result("操作失败，可能权限不足"))
 
     async def cancel_group_admin(self, event: AiocqhttpMessageEvent):
         """取消管理员@user"""
         for tid in get_ats(event):
-            await event.bot.set_group_admin(
-                group_id=int(event.get_group_id()), user_id=int(tid), enable=False
-            )
-            chain = [At(qq=tid), Plain(text="你的管理员身份已被取消")]
-            await event.send(event.chain_result(chain))
+            try:
+                await event.bot.set_group_admin(
+                    group_id=int(event.get_group_id()), user_id=int(tid), enable=False
+                )
+                chain = [At(qq=tid), Plain(text="你的管理员身份已被取消")]
+                await event.send(event.chain_result(chain))
+            except Exception:
+                await event.send(event.plain_result("操作失败，可能权限不足"))
 
     async def set_essence_msg(self, event: AiocqhttpMessageEvent):
         """将引用消息添加到群精华"""

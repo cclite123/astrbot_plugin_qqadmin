@@ -1,10 +1,7 @@
-import inspect
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from enum import IntEnum
-from functools import wraps
-from typing import Any, cast
+from __future__ import annotations
 
-from astrbot import logger
+from enum import IntEnum
+
 from astrbot.core.platform.sources.aiocqhttp.aiocqhttp_message_event import (
     AiocqhttpMessageEvent,
 )
@@ -17,6 +14,7 @@ from .utils import get_ats
 class PermLevel(IntEnum):
     """
     定义用户的权限等级。数字越小，权限越高。
+    保留 OWNER/ADMIN/MEMBER 用于 Bot 群内角色检查。
     """
 
     SUPERUSER = 0
@@ -76,7 +74,7 @@ class PermissionManager:
         group_id = event.get_group_id()
         if int(group_id) == 0 or int(user_id) == 0:
             return PermLevel.UNKNOWN
-        if self.cfg and str(user_id) in self.cfg.admins_id:
+        if self.cfg and str(user_id) in self.cfg.super_admins:
             return PermLevel.SUPERUSER
         try:
             info = await event.bot.get_group_member_info(
@@ -106,23 +104,9 @@ class PermissionManager:
         self,
         event: AiocqhttpMessageEvent,
         bot_perm: PermLevel,
-        perm_key: str,
         check_at: bool = True,
     ) -> str | None:
-        user_level = await self.get_perm_level(event, user_id=event.get_sender_id())
-
-        # 未指定权限，则默认至少需要管理员权限
-        group_config = (
-            self.db.get_group_snapshot(event.get_group_id())
-            if self.db is not None
-            else {"perms": self.cfg.perms if self.cfg else {}}
-        )
-        perms = group_config.get("perms", {})
-        required_level = PermLevel.from_str(str(perms.get(perm_key, "管理员")))
-
-        if user_level > required_level:
-            return f"你没{required_level}权限"
-
+        """检查 Bot 权限和 @目标权限（用户超管权限由命令分发器单独检查）"""
         bot_level = await self.get_perm_level(event, user_id=event.get_self_id())
         if bot_level > bot_perm:
             return f"我没{bot_perm}权限"
@@ -137,68 +121,3 @@ class PermissionManager:
 
 
 perm_manager = PermissionManager()
-
-
-def perm_required(
-    bot_perm: PermLevel = PermLevel.ADMIN,
-    perm_key: str | None = None,
-    check_at: bool = True,
-):
-    """
-    权限检查装饰器。
-    :param perm_key: 可选。用户执行命令所需的最低权限键名，默认使用被装饰函数的函数名。
-    :param bot_perm: Bot 执行此命令所需的最低权限等级。
-    :param check_at: 是否检查“是否有权对被@者实施操作”。
-    """
-
-    def decorator(
-        func: Callable[..., AsyncGenerator[Any, Any] | Awaitable[Any]],
-    ) -> Callable[..., AsyncGenerator[Any, Any]]:
-        actual_perm_key = perm_key or func.__name__
-
-        @wraps(func)
-        async def wrapper(
-            plugin_instance: Any,
-            event: AiocqhttpMessageEvent,
-            *args: Any,
-            **kwargs: Any,
-        ) -> AsyncGenerator[Any, Any]:
-
-            # 仅限aiocqhttp
-            if event.platform_meta.name != "aiocqhttp":
-                return
-
-            # 仅限群聊
-            if event.is_private_chat():
-                return
-
-            # 权限管理未初始化
-            if not perm_manager._initialized:
-                logger.error(
-                    f"PermissionManager 未初始化（尝试访问权限项：{perm_key}）"
-                )
-                yield event.plain_result("内部错误：权限系统未正确加载")
-                event.stop_event()
-                return
-
-            # 判断权限
-            result = await perm_manager.perm_block(
-                event, bot_perm=bot_perm, perm_key=actual_perm_key, check_at=check_at
-            )
-            if result:
-                yield event.plain_result(result)
-                event.stop_event()
-                return
-
-            # 执行原始方法
-            if inspect.isasyncgenfunction(func):
-                async for item in func(plugin_instance, event, *args, **kwargs):
-                    yield item
-            else:
-                await cast(
-                    Awaitable[Any], func(plugin_instance, event, *args, **kwargs)
-                )
-
-        return wrapper
-
-    return decorator

@@ -110,6 +110,10 @@ class BanproHandle:
 
     async def on_ban_words(self, event: AiocqhttpMessageEvent):
         """检测禁词并撤回消息、禁言用户"""
+        # 超管免检测
+        if str(event.get_sender_id()) in self.cfg.super_admins:
+            return
+
         gid = event.get_group_id()
 
         # 检测自定义的违禁词
@@ -157,7 +161,7 @@ class BanproHandle:
         """设置刷屏禁言时长"""
         gid = event.get_group_id()
         if isinstance(time, int):
-            await self.db.set(gid, "word_ban_time", time)
+            await self.db.set(gid, "spamming_ban_time", time)
             msg = (
                 f"本群刷屏禁言时长已设为：{time} 秒"
                 if time > 0
@@ -165,7 +169,7 @@ class BanproHandle:
             )
             await event.send(event.plain_result(msg))
         else:
-            status = await self.db.get(gid, "word_ban_time", 0)
+            status = await self.db.get(gid, "spamming_ban_time", 0)
             await event.send(event.plain_result(f"本群刷屏禁言时长：{status} 秒"))
 
     async def spamming_ban(self, event: AiocqhttpMessageEvent):
@@ -177,6 +181,7 @@ class BanproHandle:
             sender_id == event.get_self_id()
             or ban_time <= 0
             or len(event.get_messages()) == 0
+            or str(sender_id) in self.cfg.super_admins
         ):
             return
 
@@ -210,7 +215,9 @@ class BanproHandle:
                     logger.error(f"bot在群{group_id}权限不足，禁言失败")
                 timestamps.clear()
 
-    async def start_vote_mute(self, event, ban_time: int | None = None):
+    async def start_vote_mute(
+        self, event: AiocqhttpMessageEvent, ban_time: int | None = None
+    ):
         """
         发起投票禁言：如果已有对该用户的投票，直接提示
         """

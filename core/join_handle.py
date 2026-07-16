@@ -166,7 +166,9 @@ class JoinHandle:
                 event.plain_result(f"本群进群欢迎语：\n{text or '（未设置）'}")
             )
 
-    async def handle_leave_notify(self, event: AiocqhttpMessageEvent, mode_str):
+    async def handle_leave_notify(
+        self, event: AiocqhttpMessageEvent, mode_str: str | bool | None
+    ):
         gid = event.get_group_id()
         mode = parse_bool(mode_str)
         if isinstance(mode, bool):
@@ -176,7 +178,9 @@ class JoinHandle:
             status = await self.db.get(gid, "leave_notify")
             await event.send(event.plain_result(f"本群退群通知：{status}"))
 
-    async def handle_leave_block(self, event: AiocqhttpMessageEvent, mode_str):
+    async def handle_leave_block(
+        self, event: AiocqhttpMessageEvent, mode_str: str | bool | None
+    ):
         gid = event.get_group_id()
         mode = parse_bool(mode_str)
         if isinstance(mode, bool):
@@ -201,7 +205,7 @@ class JoinHandle:
             return False, "黑名单用户"
 
         # 2.QQ等级过低
-        min_level = await self.db.get(gid, "join_min_level")
+        min_level = await self.db.get(gid, "join_min_level", 0)
         if min_level > 0 and user_level is not None and user_level < min_level:
             return False, f"QQ等级过低({user_level}<{min_level})"
 
@@ -329,13 +333,13 @@ class JoinHandle:
         # 进群欢迎、禁言
         elif raw.get("notice_type") == "group_increase" and uid != event.get_self_id():
             # 进群欢迎
-            join_welcome = await self.db.get(gid, "join_welcome")
+            join_welcome = await self.db.get(gid, "join_welcome", "")
             if join_welcome:
                 nickname = await get_nickname(event, uid)
                 welcome = join_welcome.format(nickname=nickname)
                 await event.send(event.plain_result(welcome))
             # 进群禁言
-            join_ban_time = await self.db.get(gid, "join_ban_time")
+            join_ban_time = await self.db.get(gid, "join_ban_time", 0)
             if join_ban_time > 0:
                 try:
                     await client.set_group_ban(
@@ -355,8 +359,8 @@ class JoinHandle:
             return "未引用任何【进群申请】"
         lines = text.split("\n")
         if "【进群申请】" in text and len(lines) >= 4:
-            nickname = lines[1].split("：")[1]  # 第2行冒号后文本为nickname
-            flag = lines[3].split("：")[1]  # 第4行冒号后文本为flag
+            nickname = lines[1].split("：", 1)[1] if "：" in lines[1] else ""
+            flag = lines[3].split("：", 1)[1] if "：" in lines[3] else ""
             try:
                 await event.bot.set_group_add_request(
                     flag=flag, sub_type="add", approve=approve, reason=extra

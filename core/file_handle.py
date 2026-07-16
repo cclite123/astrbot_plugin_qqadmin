@@ -272,7 +272,9 @@ class FileHandle:
             else:
                 await event.send(event.plain_result(f"群文件夹【{folder_name}】不存在"))
 
-    async def view_group_file(self, event: AiocqhttpMessageEvent, path):
+    async def view_group_file(
+        self, event: AiocqhttpMessageEvent, path: str | None = None
+    ):
         """查看群文件/目录，path 可以是 文件夹名、文件名 或 文件夹名/文件名"""
         group_id = int(event.get_group_id())
         client = event.bot

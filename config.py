@@ -115,12 +115,12 @@ class VoteBanConfig(ConfigNode):
 
 class PluginConfig(ConfigNode):
     default: dict
+    super_admins: list
     admin_audit: bool
     random_ban_time: str
     vote_ban: VoteBanConfig
     llm_get_msg_count: int
     level_threshold: int
-    perms: dict
 
     _db_version = 3
     _plugin_name: str = "astrbot_plugin_qqadmin"
@@ -129,6 +129,7 @@ class PluginConfig(ConfigNode):
         super().__init__(cfg)
         self.context = context
         self.admins_id = self._clean_ids(context.get_config().get("admins_id", []))
+        self.super_admins = self._clean_ids(self._data.get("super_admins", []))
 
         self.data_dir = StarTools.get_data_dir(self._plugin_name)
         self.plugin_dir = Path(get_astrbot_plugin_path()) / self._plugin_name
@@ -192,22 +193,13 @@ class PluginConfig(ConfigNode):
             },
             "llm_get_msg_count": self.llm_get_msg_count,
             "level_threshold": self.level_threshold,
-            "perms": dict(self.perms),
         }
 
     def refresh_runtime_settings(self) -> None:
         """刷新依赖配置的运行时缓存。"""
-        try:
-            min_ban_time, max_ban_time = self._resolve_ban_time_range(
-                str(self.random_ban_time)
-            )
-        except ValueError:
-            logger.warning(
-                f"[config:{self.__class__.__name__}] random_ban_time 格式错误: "
-                f"{self.random_ban_time}，已回退到 30~300"
-            )
-            min_ban_time, max_ban_time = 30, 300
-            self.random_ban_time = "30~300"
+        min_ban_time, max_ban_time = self._resolve_ban_time_range(
+            str(self.random_ban_time)
+        )
 
         self.min_ban_time = max(min_ban_time, 1)
         self.max_ban_time = min(max(max_ban_time, self.min_ban_time), 2592000)

@@ -1,13 +1,13 @@
 {
   "default": {
     "description": "默认群配置",
-    "hint": "这些配置项会作为默认群模板使用。具体群开启"跟随默认配置"后，会直接继承这里的设置；关闭后则保存自己的独立配置。",
+    "hint": "这些配置项会作为默认群模板使用。具体群开启「跟随默认配置」后，会直接继承这里的设置；关闭后则保存自己的独立配置。",
     "obvious_hint": true,
     "type": "object",
     "items": {
       "join_switch": {
         "description": "进群审核",
-        "hint": "开启后，进群退群模块的功能才会在当前群聊生效，群主、群管理可用命令 "进群审核 开/关" 为当前群聊设置",
+        "hint": "开启后，进群退群模块的功能才会在当前群聊生效，群主、群管理可用命令「进群审核 开/关」为当前群聊设置",
         "type": "bool",
         "default": true
       },
@@ -100,7 +100,7 @@
       },
       "builtin_ban": {
         "description": "启用内置禁词",
-        "hint": "插件内置了一个敏感词库, 如需自定义请自行修改：data/plugins/astrbot_plugin_qqadmin/SensitiveLexicon.json, 不建议开启，让群管理员通过命令" 内置禁词 开/关 "来为当前群聊设置",
+        "hint": "插件内置了一个敏感词库, 如需自定义请自行修改：data/plugins/astrbot_plugin_qqadmin/SensitiveLexicon.json, 不建议开启，让群管理员通过命令「内置禁词 开/关」来为当前群聊设置",
         "type": "bool",
         "default": false
       },
@@ -197,7 +197,7 @@
   },
   "level_threshold": {
     "description": "高等级成员阈值设置",
-    "hint": "群等级高于此阈值的群成员，将被判定为"高等级成员"",
+    "hint": "群等级高于此阈值的群成员，将被判定为「高等级成员」",
     "type": "int",
     "slider": {
       "min": 1,
